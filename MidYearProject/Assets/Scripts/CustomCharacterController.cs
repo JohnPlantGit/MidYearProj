@@ -17,10 +17,9 @@ public class CustomCharacterController : MonoBehaviour
     public CameraController m_cameraController = null;
     public LineRenderer m_grappleHook;
 
-    private CapsuleCollider m_collider = null;
+    public CapsuleCollider m_collider = null;
     private Vector3 m_velocity;
-    //private float m_yaw = 0.0f;
-    private bool m_grounded = false;
+    public bool m_grounded = false;
     private bool m_crouching = false;
     private float m_colliderHeight;
     private float m_colliderCentre;
@@ -33,6 +32,8 @@ public class CustomCharacterController : MonoBehaviour
     private Vector3 m_grappleLocation;
     private bool m_grappling;
     private float m_grappleLength;
+    private bool m_onLedge;
+    private Vector3 m_ledgeNormal;
 	// Use this for initialization
 	void Start ()
     {
@@ -88,7 +89,7 @@ public class CustomCharacterController : MonoBehaviour
             m_velocity += direction.normalized * m_jumpSpeed / 2f;
         }
 
-        //if (!m_wallRunning)
+        if (!m_onLedge)
         {
             m_velocity += m_gravity * Time.deltaTime;
         }
@@ -143,30 +144,51 @@ public class CustomCharacterController : MonoBehaviour
         m_collider.height = Mathf.Lerp(m_colliderHeight / 2, m_colliderHeight, m_crouchTimer / m_crouchLength);
         m_collider.center = new Vector3(0, Mathf.Lerp(m_colliderCentre / 2, m_colliderCentre, m_crouchTimer / m_crouchLength), 0);
 
-        Vector3 movementVector = Quaternion.Euler(0, m_cameraController.Yaw, 0) * new Vector3(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical"));
+        if (!m_onLedge)
+        {
+            Vector3 movementVector = Quaternion.Euler(0, m_cameraController.Yaw, 0) * new Vector3(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical"));
 
-        if (m_grounded)
-            m_velocity += movementVector * (m_crouching ? m_crouchedAcceleration : m_acceleration) * Time.deltaTime;
-        transform.position += m_velocity * Time.deltaTime;
-        if (m_grounded)
+            if (m_grounded)
+                m_velocity += movementVector * (m_crouching ? m_crouchedAcceleration : m_acceleration) * Time.deltaTime;
+            else
+                m_velocity += movementVector * m_acceleration * 0.1f * Time.deltaTime;
+
+            if (m_grounded)
+                m_velocity -= new Vector3(m_velocity.x, 0, m_velocity.z) * m_friction * Time.deltaTime;
+        }
+        else
+        {
+            Vector3 movementVector = m_ledgeNormal * Input.GetAxis("Horizontal");
+            m_velocity += movementVector * m_acceleration * Time.deltaTime;
+
             m_velocity -= new Vector3(m_velocity.x, 0, m_velocity.z) * m_friction * Time.deltaTime;
+        }
+
+        transform.position += m_velocity * Time.deltaTime;
 
         transform.rotation = Quaternion.Euler(0, m_cameraController.Yaw, 0);
 
-        if (movementVector.magnitude == 0 && m_velocity.magnitude <= 0.1)
-        {
-            m_velocity = Vector3.zero;
-        }
+        //if (movementVector.magnitude == 0 && m_velocity.magnitude <= 0.1)
+        //{
+        //    m_velocity = Vector3.zero;
+        //}
     }
 
     private void LateUpdate()
     {        
-        Collider[] collisions = Physics.OverlapCapsule(m_collider.center + new Vector3(0, m_collider.height / 2, 0) + transform.position, m_collider.center - new Vector3(0, m_collider.height / 2, 0) + transform.position, m_collider.radius, -1, QueryTriggerInteraction.Ignore);
+        Collider[] collisions = Physics.OverlapCapsule(m_collider.center + new Vector3(0, m_collider.height / 2, 0) + transform.position, m_collider.center - new Vector3(0, m_collider.height / 2, 0) + transform.position, m_collider.radius, -1, QueryTriggerInteraction.Collide);
 
         foreach (Collider c in collisions)
         {
             if (c == m_collider)
                 continue;
+            if (c.isTrigger)
+            {
+                m_onLedge = true;
+                m_ledgeNormal = new Vector3(0, 0, 1);
+                m_velocity.y = 0;
+                continue;
+            }
 
             Vector3 direction;
             float distance;
@@ -212,11 +234,5 @@ public class CustomCharacterController : MonoBehaviour
         {
             m_grounded = false;
         }
-    }
-
-    private void OnDrawGizmos()
-    {
-        if (m_grappling)
-            Gizmos.DrawLine(m_cameraController.DirectionRay.origin, m_grappleLocation);
     }
 }
