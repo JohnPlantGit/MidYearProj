@@ -6,16 +6,20 @@ public class CameraController : MonoBehaviour
 {
     public GameObject m_parent;
     public GameObject m_camera;
+    public Transform m_lookAt;
     public float m_armLength;
     public float m_pitchUpperLimit;
     public float m_pitchLowerLimit;
-    public float m_lookingLimit;
+    public float m_rotationSpeed;
+    public float m_rotationFriction;
+    public float m_movementSpeed;
 
     private float m_yaw = 0.0f;
     private float m_pitch = 0.0f;
+    private float m_yawVelocity = 0.0f;
+    private float m_pitchVelocity = 0.0f;
     private Vector3 m_offset;
-    private bool m_looking;
-    private float m_lookingYaw;
+    private Vector3 m_velocity;
 
     public float Yaw
     {
@@ -45,20 +49,14 @@ public class CameraController : MonoBehaviour
 	// Update is called once per frame
 	void Update ()
     {
-        if (Input.GetKeyDown(KeyCode.LeftAlt))
+        if (!m_lookAt)
         {
-            m_looking = true;
-            m_lookingYaw = m_yaw;
-        }
-        if (Input.GetKeyUp(KeyCode.LeftAlt))
-        {
-            m_looking = false;
-        }
-        transform.position = m_parent.transform.position + m_offset;
+            m_velocity = (m_parent.transform.position + m_offset) - transform.position;
+            transform.position += m_velocity * m_movementSpeed * Time.deltaTime;
 
-        if (!m_looking)
-        {
-            m_yaw += Input.GetAxis("Mouse X") * 2;
+            m_yawVelocity += Input.GetAxis("Mouse X") * m_rotationSpeed;
+            m_yaw += m_yawVelocity * Time.deltaTime;
+            m_yawVelocity -= m_yawVelocity * m_rotationFriction * Time.deltaTime;
             if (m_yaw > 180)
             {
                 m_yaw -= 360;
@@ -67,29 +65,24 @@ public class CameraController : MonoBehaviour
             {
                 m_yaw += 360;
             }
+
+            m_pitchVelocity -= Input.GetAxis("Mouse Y") * m_rotationSpeed;
+            m_pitch += m_pitchVelocity * Time.deltaTime;
+            m_pitchVelocity -= m_pitchVelocity * m_rotationFriction * Time.deltaTime;
+            if (m_pitch > m_pitchUpperLimit)
+            {
+                m_pitch = m_pitchUpperLimit;
+            }
+            if (m_pitch < m_pitchLowerLimit)
+            {
+                m_pitch = m_pitchLowerLimit;
+            }
+
+            transform.eulerAngles = new Vector3(m_pitch, m_yaw, 0);
         }
         else
         {
-            m_lookingYaw += Input.GetAxis("Mouse X") * 2;
-            if (m_lookingYaw > m_yaw + m_lookingLimit)
-            {
-                m_lookingYaw = m_yaw + m_lookingLimit;
-            }
-            if (m_lookingYaw < m_yaw - m_lookingLimit)
-            {
-                m_lookingYaw = m_yaw - m_lookingLimit;
-            }
+            transform.forward = (m_lookAt.position - transform.position).normalized;
         }
-        m_pitch -= Input.GetAxis("Mouse Y") * 2;
-        if (m_pitch > m_pitchUpperLimit)
-        {
-            m_pitch = m_pitchUpperLimit;
-        }
-        if (m_pitch < m_pitchLowerLimit)
-        {
-            m_pitch = m_pitchLowerLimit;
-        }
-
-        transform.eulerAngles = new Vector3(m_pitch, m_looking ? m_lookingYaw : m_yaw, 0);
     }
 }
