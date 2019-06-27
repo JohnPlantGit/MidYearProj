@@ -2,209 +2,120 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+public enum MovementState
+{
+    Walking,
+    Sprinting,
+    Crouching,
+    Disabled
+}
+
 public class Player : MonoBehaviour
 {
     public CharacterController m_characterController;
+    public Animator m_animator;
     public float m_acceleration;
     public float m_crouchedAcceleration;
+    public float m_sprintAcceleration;
     public float m_friction;
-    public float m_jumpSpeed;
-    public int m_jumpAmount;
     public Vector3 m_gravity;
-    public float m_wallClimbLength;
-    public float m_wallClimbSpeed;
-    public float m_wallRunLength;
     public float m_crouchLength;
     public CameraController m_cameraController = null;
-    public LineRenderer m_grappleHook;
 
     //public CapsuleCollider m_collider = null;
     private Vector3 m_velocity;
     public bool m_grounded = false;
-    private bool m_crouching = false;
+    public bool m_crouching = false;
     private float m_colliderHeight;
     private float m_colliderCentre;
-    private int m_jumps;
-    private bool m_canWallClimb;
-    private float m_wallClimbTimer;
-    private float m_wallRunTimer;
-    private bool m_canWallRun;
     private float m_crouchTimer;
-    private Vector3 m_grappleLocation;
-    private bool m_grappling;
-    private float m_grappleLength;
-    private bool m_onLedge;
-    private Vector3 m_ledgeNormal;
+    public MovementState m_movementState = MovementState.Walking;
     // Use this for initialization
     void Start()
     {
+        m_animator = GetComponent<Animator>();
+
         m_colliderHeight = m_characterController.height;
         m_colliderCentre = m_characterController.center.y;
 
         Cursor.lockState = CursorLockMode.Locked;
 
-        m_jumps = m_jumpAmount;
-        m_wallClimbTimer = m_wallClimbLength;
-        m_wallRunTimer = m_wallRunLength;
         m_crouchTimer = m_crouchLength;
     }
 
     // Update is called once per frame
     void Update()
     {
-        if ((m_grounded || m_jumps > 0) && Input.GetKeyDown(KeyCode.Space))
+        if (m_movementState != MovementState.Disabled)
         {
-            m_velocity += new Vector3(0, m_jumpSpeed, 0);
-            m_jumps--;
-        }
-
-        if (Input.GetKey(KeyCode.Space) && Physics.Raycast(transform.position, transform.forward, 1f) && (m_canWallClimb || m_wallClimbTimer > 0))
-        {
-            if (m_canWallClimb)
+            if (Input.GetKeyDown(KeyCode.LeftControl))
             {
-                m_wallClimbTimer = m_wallClimbLength;
-            }
-            m_canWallClimb = false;
-            m_velocity.y = m_wallClimbSpeed;
-            m_wallClimbTimer -= Time.deltaTime;
-        }
-        if (Input.GetKey(KeyCode.Space) && (Physics.Raycast(transform.position, transform.right, 1f) || Physics.Raycast(transform.position, -transform.right, 1f)) && (m_canWallRun || m_wallRunTimer > 0))
-        {
-            if (m_canWallRun)
-            {
-                m_wallRunTimer = m_wallRunLength;
-            }
-            m_canWallRun = false;
-            if (m_wallRunLength != 0)
-                m_velocity.y = Mathf.Lerp(-5, 5, m_wallRunTimer / m_wallRunLength);
-            m_wallRunTimer -= Time.deltaTime;
-        }
-        if (Input.GetKeyDown(KeyCode.Space) && Physics.Raycast(transform.position, -transform.forward, 1f))
-        {
-            Vector3 direction = transform.forward;
-            direction.y = 0.5f;
-            m_velocity += direction.normalized * m_jumpSpeed / 2f;
-        }
-
-        if (!m_onLedge)
-        {
-            m_velocity += m_gravity * Time.deltaTime;
-        }
-
-        if (Input.GetMouseButtonDown(0))
-        {
-            RaycastHit raycast;
-            if (Physics.Raycast(m_cameraController.DirectionRay, out raycast, 100))
-            {
-                m_grappling = true;
-                m_grappleLocation = raycast.point;
-                m_grappleLength = raycast.distance;
-                m_grappleHook.enabled = true;
-                m_grappleHook.SetPosition(0, transform.position);
-                m_grappleHook.SetPosition(1, m_grappleLocation);
-            }
-        }
-        if (Input.GetMouseButtonUp(0))
-        {
-            m_grappling = false;
-            m_grappleHook.enabled = false;
-        }
-        if (m_grappling)
-        {
-            m_grappleHook.SetPosition(0, transform.position);
-        }
-
-        if (Input.GetKeyDown(KeyCode.LeftControl))
-        {
-            if (m_crouching)
-            {
-                RaycastHit[] raycast = Physics.RaycastAll(transform.position, Vector3.up, 2.0f);
-                if ((raycast.Length > 0 && raycast[0].distance >= 2) || raycast.Length == 0)
+                if (m_crouching)
                 {
-                    m_crouching = false;
+                    if (!Physics.Raycast(transform.position, Vector3.up, 2.0f, LayerMask.NameToLayer("Player")))
+                    {
+                        m_crouching = false;
+                        m_movementState = MovementState.Walking;
+                    }
+
+                }
+                else if (m_movementState == MovementState.Walking)
+                {
+                    m_crouching = true;
+                    m_movementState = MovementState.Crouching;
                 }
             }
+            if (m_crouching)
+                m_crouchTimer -= Time.deltaTime;
             else
+                m_crouchTimer += Time.deltaTime;
+            m_crouchTimer = Mathf.Clamp(m_crouchTimer, 0, m_crouchLength);
+
+            m_characterController.height = Mathf.Lerp(m_colliderHeight / 2, m_colliderHeight, m_crouchTimer / m_crouchLength);
+            m_characterController.center = new Vector3(0, Mathf.Lerp(m_colliderCentre / 2, m_colliderCentre, m_crouchTimer / m_crouchLength), 0);
+
+            if (Input.GetKeyDown(KeyCode.LeftShift) && m_movementState == MovementState.Walking)
             {
-                m_crouching = true;
+                m_movementState = MovementState.Sprinting;
             }
-        }
-        if (m_crouching)
-            m_crouchTimer -= Time.deltaTime;
-        else
-            m_crouchTimer += Time.deltaTime;
-        if (m_crouchTimer > m_crouchLength)
-            m_crouchTimer = m_crouchLength;
-        if (m_crouchTimer < 0)
-            m_crouchTimer = 0;
+            if (Input.GetKeyUp(KeyCode.LeftShift) && m_movementState == MovementState.Sprinting)
+            {
+                m_movementState = MovementState.Walking;
+            }
 
-        m_characterController.height = Mathf.Lerp(m_colliderHeight / 2, m_colliderHeight, m_crouchTimer / m_crouchLength);
-        m_characterController.center = new Vector3(0, Mathf.Lerp(m_colliderCentre / 2, m_colliderCentre, m_crouchTimer / m_crouchLength), 0);
-
-        if (!m_onLedge)
-        {
             Vector3 movementVector = Quaternion.Euler(0, m_cameraController.Yaw, 0) * new Vector3(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical"));
 
-            if (m_grounded)
-                m_velocity += movementVector * (m_crouching ? m_crouchedAcceleration : m_acceleration) * Time.deltaTime;
-            else
-                m_velocity += movementVector * m_acceleration * 0.1f * Time.deltaTime;
+            float acceleration = 0;
+            switch (m_movementState)
+            {
+                case MovementState.Walking:
+                    acceleration = m_acceleration;
+                    break;
+                case MovementState.Sprinting:
+                    acceleration = m_sprintAcceleration;
+                    break;
+                case MovementState.Crouching:
+                    acceleration = m_crouchedAcceleration;
+                    break;
+            }
 
-            if (m_grounded)
-                m_velocity -= new Vector3(m_velocity.x, 0, m_velocity.z) * m_friction * Time.deltaTime;
-        }
-        else
-        {
-            Vector3 movementVector = m_ledgeNormal * Input.GetAxis("Horizontal");
-            m_velocity += movementVector * m_acceleration * Time.deltaTime;
+            m_velocity += movementVector * acceleration * Time.deltaTime;
+            if (!m_characterController.isGrounded)
+                m_velocity += m_gravity * Time.deltaTime;
+
+            m_characterController.Move(m_velocity * Time.deltaTime);
 
             m_velocity -= new Vector3(m_velocity.x, 0, m_velocity.z) * m_friction * Time.deltaTime;
-        }
 
-        m_characterController.Move(m_velocity * Time.deltaTime);
-
-        transform.rotation = Quaternion.Euler(0, m_cameraController.Yaw, 0);
-
-        //if (movementVector.magnitude == 0 && m_velocity.magnitude <= 0.1)
-        //{
-        //    m_velocity = Vector3.zero;
-        //}
-    }
-
-    private void LateUpdate()
-    {
-        if (m_grappling)
-        {
-            Vector3 grapple = m_grappleLocation - m_cameraController.DirectionRay.origin;
-            float magnitude = grapple.magnitude;
-            if (magnitude > m_grappleLength)
-            {
-                transform.position += grapple.normalized * (magnitude - m_grappleLength);
-                Vector3 velocityProjected = Vector3.Project(m_velocity, -grapple.normalized);
-                m_velocity -= velocityProjected;
-            }
-        }
-
-        //m_grounded = colliderBelow;
-        Vector3 origin = transform.position;
-        origin.y += 0.1f;
-        if (Physics.Raycast(origin, Vector3.down, 0.2f))
-        {
-            m_grounded = true;
-            m_canWallClimb = true;
-            m_canWallRun = true;
-            m_jumps = m_jumpAmount;
-        }
-        else
-        {
-            m_grounded = false;
+            transform.rotation = Quaternion.Euler(0, m_cameraController.Yaw, 0);
         }
     }
 
     private void OnControllerColliderHit(ControllerColliderHit hit)
     {
-        Vector3 velocityProjected = Vector3.Project(m_velocity, -hit.normal);
-        m_velocity -= velocityProjected;
+        // THIS MAKES THE PLAYER SLIDE DOWN SLOPES... AND ALSO UP...
+        //Vector3 velocityProjected = Vector3.Project(m_velocity, -hit.normal);
+        //m_velocity -= velocityProjected;
     }
 }
 
